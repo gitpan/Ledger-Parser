@@ -1,62 +1,45 @@
 package Ledger::Posting;
 BEGIN {
-  $Ledger::Posting::VERSION = '0.01';
+  $Ledger::Posting::VERSION = '0.02';
 }
 
 use 5.010;
+use Ledger::Util;
 use Log::Any '$log';
+use Parse::Number::EN qw(parse_number_en);
 use Moo;
 
 # VERSION
 
-my $reset_line = sub { $_[0]->line(undef) };
-
-has account => (is => 'rw', trigger => $reset_line);
-has amount => (is => 'rw', trigger => $reset_line); # [scalar, unit]
-has is_virtual => (is => 'rw', trigger => $reset_line);
-has virtual_must_balance => (is => 'rw', trigger => $reset_line);
-has tx => (is => 'rw');
-has line => (is => 'rw');
-
-our $re_scalar    = qr/(?:[+-]?[\d,]+(?:.\d+)?)/x;
-our $re_cmdity    = qr/(?:\$|[A-Za-z_]+)/x;
-our $re_amount    = qr/(?:
-                           (?:(?<cmdity>$re_cmdity)\s*(?<scalar>$re_scalar))|
-                           (?:(?<scalar>$re_scalar)\s*(?<cmdity>$re_cmdity))|
-                           (?:(?<scalar>$re_scalar))
-                       )/x;
+has account    => (is => 'rw', trigger => $reset_lineref_sub);
+has amount     => (is => 'rw', trigger => $reset_lineref_sub); # [scalar, unit]
+has comment    => (is => 'rw', trigger => $reset_lineref_sub);
+has is_virtual => (is => 'rw', trigger => $reset_lineref_sub);
+has virtual_must_balance => (is => 'rw', trigger => $reset_lineref_sub);
+has tx         => (is => 'rw');
+has lineref    => (is => 'rw');
 
 sub BUILD {
     my ($self, $args) = @_;
     my $amt = $self->amount;
     if (defined($amt) && !ref($amt)) {
-        $self->amount( $self->_parse_amount($self->amount) );
+        $self->amount( Ledger::Util::parse_amount($self->amount) );
     }
     # re-set here because of trigger
-    if (!defined($self->line)) {
-        $self->line($args->{line});
+    if (!defined($self->lineref)) {
+        $self->lineref($args->{lineref});
     }
 }
 
-sub _parse_amount {
-    my ($self, $amt) = @_;
-    $amt =~ $re_amount or die "Invalid amount syntax: $amt";
-    my $scalar = $+{scalar};
-    my $cmdity = $+{cmdity} // "";
-    $scalar =~ s/,//g;
-    [$scalar+0, $cmdity];
-}
-
-sub format_amount {
-    my ($self, $amt) = @_;
-    $amt //= $self->amount;
-    $amt->[0] . (length($amt->[1]) ? " $amt->[1]" : "");
+sub _die {
+    my ($self, $msg) = @_;
+    $self->tx->journal->_die("Invalid posting: $msg");
 }
 
 sub as_string {
     my ($self) = @_;
-    if (defined $self->line) {
-        $self->tx->journal->raw_lines->[ $self->line ];
+    if (defined $self->lineref) {
+        ${$self->lineref};
     } else {
         my ($o, $c);
         if ($self->is_virtual) {
@@ -70,8 +53,9 @@ sub as_string {
         }
 
         " $o".$self->account.$c.
-            ($self->amount ? "  ".$self->format_amount() : "").
-                "\n";
+            ($self->amount ? "  ".Ledger::Util::format_amount() : "").
+                (defined($self->comment) ? " ;".$self->comment : "").
+                    "\n";
     }
 }
 
@@ -91,7 +75,7 @@ Ledger::Posting - Represent a Ledger posting in a transaction
 
 =head1 VERSION
 
-version 0.01
+version 0.02
 
 =head1 SYNOPSIS
 
@@ -109,7 +93,7 @@ version 0.01
 
 Pointer to transaction object.
 
-=head2 line => INT
+=head2 lineref => REF TO STR
 
 =head1 METHODS
 

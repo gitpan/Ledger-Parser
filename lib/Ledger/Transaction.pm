@@ -1,31 +1,22 @@
 package Ledger::Transaction;
 BEGIN {
-  $Ledger::Transaction::VERSION = '0.01';
+  $Ledger::Transaction::VERSION = '0.02';
 }
 
 use 5.010;
 use DateTime;
 use Log::Any '$log';
+use Ledger::Util;
 use Moo;
 
 # VERSION
 
-my $now = DateTime->now;
-my $reset_line = sub { $_[0]->line(undef) };
-
-has date        => (is => 'rw', trigger => $reset_line);
-has seq         => (is => 'rw', trigger => $reset_line);
-has description => (is => 'rw', trigger => $reset_line);
+has date        => (is => 'rw', trigger => $reset_lineref_sub);
+has seq         => (is => 'rw', trigger => $reset_lineref_sub);
+has description => (is => 'rw', trigger => $reset_lineref_sub);
 has entries     => (is => 'rw');
-has line        => (is => 'rw');
+has lineref     => (is => 'rw'); # ref to line in journal->lines
 has journal     => (is => 'rw');
-
-my $re_dsep = qr![/-]!;
-our $re_date = qr/(?:
-                      (?:(?<y>\d\d|\d\d\d\d)$re_dsep)?
-                      (?<m>\d{1,2})$re_dsep
-                      (?<d>\d{1,2})
-                  )/x;
 
 sub BUILD {
     my ($self, $args) = @_;
@@ -33,27 +24,25 @@ sub BUILD {
         $self->entries([]);
     }
     if (!ref($self->date)) {
-        $self->date($self->_parse_date($self->date));
+        $self->date(Ledger::Util::parse_date($self->date));
     }
     # re-set here because of trigger
-    if (!defined($self->line)) {
-        $self->line($args->{line});
+    if (!defined($self->lineref)) {
+        $self->lineref($args->{lineref});
     }
 }
 
-sub _parse_date {
-    my ($self, $date) = @_;
-    die "Invalid date" unless $date =~ $re_date;
-    my $y = $+{y} // $now->year;
-    DateTime->new(day => $+{d}, month => $+{m}, year => $y);
+sub _die {
+    my ($self, $msg) = @_;
+    $self->journal->_die("Invalid transaction: $msg");
 }
 
 sub as_string {
     my ($self) = @_;
     my $rl = $self->journal->raw_lines;
 
-    my $res = defined($self->line) ?
-        $self->journal->raw_lines->[$self->line] :
+    my $res = defined($self->lineref) ?
+        ${$self->lineref} :
             $self->date->ymd . ($self->seq ? " (".$self->seq.")" : "") . " ".
                 $self->description . "\n";
     for my $p (@{$self->entries}) {
@@ -88,26 +77,27 @@ sub _bal_or_check {
         my $amt = $_->amount;
         next unless $amt;
         next if $is_vnb && $which eq 'check';
-        my $scalar = $amt->[0];
+        my $number = $amt->[0];
         my $cmdity = $amt->[1];
         $bal{$cmdity} //= 0;
-        $bal{$cmdity} += $scalar;
+        $bal{$cmdity} += $number;
     }
+    $log->tracef("num_p=%d, num_v=%d, num_blank=%d",
+                 $num_p, $num_v, $num_blank);
 
     my @bal = map {[$bal{$_},$_]} grep {$bal{$_} != 0} keys %bal;
     if ($which eq 'check') {
-        my $errprefix = "Transaction at line #".($self->line+1).": ";
-        die $errprefix."there must be at least 2 postings"
-            if $num_p < 2 && !$num_v;
-        die $errprefix."there must be at least 1 posting"
-            if !$num_p;
-        die $errprefix."there must be at most 1 posting with blank amount"
+        $self->_die("There must be at least 2 postings") if $num_p<2 && !$num_v;
+        $self->_die("There must be at least 1 posting") if !$num_p;
+        $self->_die("There must be at most 1 posting with blank amount")
             if $num_blank > 1;
 
         unless ($num_blank) {
-            die $errprefix."doesn't balance (".
-                join(", ", map {$postings->[0]->format_amount($_)} @bal).")"
-                    if @bal;
+            $self->_die(
+                "doesn't balance (".
+                    join(", ", map {Ledger::Util::format_amount($_)} @bal).
+                        ")")
+                if @bal;
         }
         return 1;
     } else {
@@ -119,6 +109,12 @@ sub _bal_or_check {
 sub balance {
     my ($self) = @_;
     $self->_bal_or_check('bal');
+}
+
+sub is_balanced {
+    my ($self) = @_;
+    my $bal = $self->balance;
+    @$bal == 0;
 }
 
 sub check {
@@ -138,7 +134,7 @@ Ledger::Transaction - Represent a Ledger transaction
 
 =head1 VERSION
 
-version 0.01
+version 0.02
 
 =head1 SYNOPSIS
 
@@ -156,7 +152,7 @@ Sequence of transaction in a day. Optional.
 
 =head2 description => STR
 
-=head2 line => INT
+=head2 lineref => REF TO STR
 
 =head2 entries => ARRAY OF OBJS
 
@@ -176,6 +172,10 @@ Pointer to L<Ledger::Journal> object.
 
 Return transaction's balance. If a transaction balances, this method should
 return [].
+
+=head2 $tx->is_balanced() => BOOL
+
+Return true if transaction is balanced, or false if otherwise.
 
 =head2 $tx->check()
 

@@ -1,6 +1,6 @@
 package Ledger::Journal;
 BEGIN {
-  $Ledger::Journal::VERSION = '0.01';
+  $Ledger::Journal::VERSION = '0.02';
 }
 
 use 5.010;
@@ -8,38 +8,39 @@ use locale;
 use Array::Iterator;
 use Log::Any '$log';
 use Moo;
-use Ledger::Transaction;
-use Ledger::Posting;
-#use Ledger::Pricing;
 use Ledger::Comment;
+use Ledger::Posting;
+use Ledger::Pricing;
+use Ledger::Transaction;
+use Ledger::Util;
+use List::Util qw(min max);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 # VERSION
 
 has raw_lines => (is => 'rw');
-has entries => (is => 'rw'); # either L::Transaction or L::Separator
+has entries   => (is => 'rw'); # array of L::Transaction, L::Comment, ...
+has _filename => (is => 'rw'); # location for parsing error message
+has _lineno   => (is => 'rw'); # idem
 
 my $re_line      = qr/^(?:(?<tx>\d)|
-                          #(?<pricing>P)|
+                          (?<pricing>P)|
                           (?<comment>.?))/x;
-my $re_date      = $Ledger::Transaction::re_date;
 my $re_tx        = qr/^(?<date>$re_date)
                       (\s+\((?<seq>\d+)\))?
-                      (?:\s+(?<desc>.+))?/x;
-my $re_accpart   = qr/(?:(
-                          (?:[^:\s]+[ \t][^:\s]+)|
-                          [^:\s]
-                      ))+/x; # don't allow double space
-my $re_acc0      = qr/(?:$re_accpart(?::$re_accpart)*)/x;
-my $re_acc       = qr/(?<acc>$re_acc0|\($re_acc0\)|\[$re_acc0\])/x;
-my $re_comment   = qr/^(\s*;|[^0-9P]|\s*$)/x;
+                      (?:\s+(?<desc>.+?)
+                          (?:\s\s+;(?<comment>.*))?)?/x;
 my $re_idcomment = qr/^\s+;/x;
 my $re_identline = qr/^\s+(?:(?<comment>;)|(?<posting>.?))/x;
-my $re_amount    = $Ledger::Posting::re_amount;
-my $re_posting   = qr/^\s+(?<acc>$re_acc)
+my $re_posting   = qr/^\s+(?<acc>$re_account)
                       (?:\s{2,}(?<amount>$re_amount))?
-                      \s*(?:;.*)?$/x;
-#my $re_pricing  = qr/^P\s+/x; # we don't parse it atm. (date)? cmd1 amount cmd2
+                      \s*(?:;(?<comment>.*))?$/x;
+my $re_pricing   = qr/^P\s+
+                      (?<date>$re_date) \s+
+                      (?<cmdity1>$re_cmdity) \s+
+                      (?<n>$re_number) \s+
+                      (?<cmdity2>$re_cmdity)
+                      (?:\s;(?<comment>.*))?\s*$/x;
 
 sub BUILD {
     my ($self, $args) = @_;
@@ -51,6 +52,29 @@ sub BUILD {
         $self->entries([]);
     }
     $self->_parse;
+}
+
+sub _die {
+    my ($self, $msg0) = @_;
+    $msg0 .= "\n" unless $msg0 =~ /\n\z/;
+    my $lineno = $self->_lineno;
+    my $msg = join(
+        "",
+        "Ledger parse error",
+        (defined($self->_filename) ? " in file ".$self->_filename : ""),
+        (defined($lineno) ? " at line #$lineno" : ""),
+        ": $msg0",
+    );
+
+    my $context = 2;
+    if (defined $lineno) {
+        for (max(0, $lineno-1-$context) ..
+                 min(scalar(@{$self->raw_lines})-1, $lineno-1+$context)) {
+            $msg .= ($_ == $lineno-1 ? "> " : "  ") . $self->raw_lines->[$_];
+        }
+    }
+
+    die $msg;
 }
 
 sub as_string {
@@ -68,22 +92,25 @@ sub _parse {
 
     my $rl = $self->raw_lines;
     my $ll = Array::Iterator->new($rl);
+    my $i;
     while (defined(my $line = $ll->get_next)) {
-        $log->tracef("line(0) = %s", $line);
-        $line =~ $re_line or die "BUG: re_line doesn't match line #".
-            ($ll->current_index+1).": $line";
+        $i = $ll->current_index;
+        $self->_lineno($i+1);
+        $log->tracef("Read line #%d: %s", $i+1, $line);
+        $line =~ $re_line or $self->_die("Can't be parsed");
 
         if (defined $+{comment}) {
             $log->tracef("Line is a comment");
 
-            my $ls = $ll->current_index;
+            my $ls = $i;
             while (1) {
                 $line = $ll->peek;
                 last unless defined($line);
                 last unless $line =~ $re_comment;
                 $ll->next;
+                # should update _lineno, but not used here
             }
-            my $le = $ll->current_index;
+            my $le = $i;
             $log->tracef("Collected comment lines: %s", [@{$rl}[$ls..$le]]);
             my $c = Ledger::Comment->new(
                     parent => $self, line_start => $ls, line_end => $le);
@@ -91,75 +118,88 @@ sub _parse {
 
         } elsif (defined $+{tx}) {
             $log->tracef("Line is a transaction");
-
-            die "Invalid transaction syntax on line #".
-                ($ll->current_index+1).": $line" unless $line =~ $re_tx;
+            $self->_die("Invalid transaction syntax") unless $line =~ $re_tx;
+            my %m=%+; $log->tracef("m=%s", \%m);
             my $tx;
             eval {
                 $tx = Ledger::Transaction->new(
                     date => $+{date}, seq => $+{seq}, description=>$+{desc},
-                    line => $ll->current_index, journal => $self,
+                    lineref => \$rl->[$i], journal => $self,
                 );
             };
-            die "Can't parse transaction on line #".($ll->current_index+1).
-                ": $@" if $@;
+            $self->_die("Can't parse transaction: $@") if $@;
             while (1) {
                 $line = $ll->peek;
                 last if !defined($line);
                 last unless $line =~ /^[ \t]/;
                 $ll->next;
+                $self->_lineno($ll->current_index + 1);
                 $log->tracef("line(tx) = %s", $line);
-                die "BUG: re_identline doesn't match line #".
-                    ($ll->current_index+1).": $line"
-                        unless $line =~ $re_identline;
+                $self->_die("Can't be parsed") unless $line =~ $re_identline;
                 if ($+{comment}) {
 
-                    my $ls = $ll->current_index;
+                    my $ls = $i;
                     while (1) {
                         $line = $ll->peek;
                         last unless defined($line);
                         last unless $line =~ $re_idcomment;
                         $ll->next;
                     }
-                    my $le = $ll->current_index;
+                    my $le = $i;
                     $log->tracef("Found comment in tx: %s", @{$rl}[$ls..$le]);
                     my $c = Ledger::Comment->new(
-                        parent => $tx, line_start => $ls, line_end => $le);
+                        parent => $tx, linerefs => [map {\$rl->[$_]} $ls..$le]);
                     push @{$tx->entries}, $c;
 
                 } elsif ($+{posting}) {
-
-                    die "Invalid posting syntax on line ".$ll->current_index.
-                        ": $line" unless $line =~ $re_posting;
+                    $self->_die("Invalid posting syntax")
+                        unless $line =~ $re_posting;
                     $log->tracef("Found posting: %s", $line);
                     my $p;
                     eval {
-                        my $acc = $+{acc};
-                        my $amount = $+{amount};
                         my ($is_virtual, $vmb);
+                        my $acc     = $+{acc};
+                        my $amount  = $+{amount};
+                        my $comment = $+{comment};
+                        #$log->tracef(">acc<=>%s<", $acc); # will catch a ws
+                        $acc =~ s/\s+$//;
                         if ($acc =~ s/^\((.+)\)$/$1/) {
                             $is_virtual = 1;
                         } elsif ($acc =~ s/^\[(.+)\]$/$1/) {
                             $is_virtual = 1;
                             $vmb = 1;
                         }
+                        #$log->tracef("Amount = %s, parsed = %s", $amount,
+                        #             Ledger::Util::parse_amount($amount))
+                        #    if $amount;
                         $p = Ledger::Posting->new(
                             account => $acc, amount => $amount,
-                            is_virtual => $is_virtual,
+                            comment => $comment, is_virtual => $is_virtual,
                             virtual_must_balance => $vmb,
-                            tx => $tx,
-                            line => $ll->current_index);
+                            tx => $tx, lineref => \$rl->[$i]);
                     };
-                    die "Can't parse posting on line ".$ll->current_index.
-                        ": $@" if $@;
+                    $self->_die("Can't parse posting: $@") if $@;
                     push @{$tx->entries}, $p;
 
                 }
             }
             $tx->check;
             push @{$self->entries}, $tx;
+        } elsif (defined $+{pricing}) {
+            $log->tracef("Line is a pricing");
+            $self->_die("Invalid pricing syntax") unless $line =~ $re_pricing;
+            my $tx;
+            eval {
+                $tx = Ledger::Pricing->new(
+                    date => $+{date}, cmdity1=>$+{cmdity1}, n=>$+{n},
+                    cmdity2=>$+{cmdity2}, comment => $+{comment},
+                    lineref => \$rl->[$i], journal => $self,
+                );
+            };
+            $self->_die("Can't parse pricing: $@") if $@;
+
         } else {
-            die "BUG: unknown entity";
+            $self->_die("Unknown entity");
         }
     }
 
@@ -210,7 +250,7 @@ Ledger::Journal - Represent an Org document
 
 =head1 VERSION
 
-version 0.01
+version 0.02
 
 =head1 SYNOPSIS
 
@@ -244,6 +284,10 @@ filter wanted transactions.
 Return all accounts that are mentioned.
 
 =head2 $journal->add_transaction($tx)
+
+=head1 SEE ALSO
+
+L<Ledger::Transaction>
 
 =head1 AUTHOR
 

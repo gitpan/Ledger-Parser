@@ -4,6 +4,7 @@ use 5.010;
 use strict;
 use warnings;
 use File::Slurp;
+use FindBin qw($Bin);
 use Ledger::Parser;
 use Test::More 0.96;
 
@@ -19,45 +20,33 @@ sub test_parse {
     if ($args{dies}) {
         ok($eval_err, "dies");
     } else {
-        ok(!$eval_err, "doesn't die") or diag $eval_err;
+        ok(!$eval_err, "doesn't die") or do {
+            diag $eval_err;
+            return;
+        };
     }
     if (defined $args{num_tx}) {
         is(scalar(@{$j->transactions}), $args{num_tx}, "num_tx");
     }
-    if ($args{post_test}) {
-        $args{post_test}->($j);
+    if ($args{posttest}) {
+        $args{posttest}->($j);
     }
 }
 
-my $ledger1 = <<'_';
+my $ledger1 = read_file("$Bin/ledger1.dat");
+test_parse
+    ledger=>$ledger1,
+    num_tx => 4,
+    posttest => sub {
+        my ($j) = @_;
+        my $txs = $j->transactions;
+        is(ref($txs), 'ARRAY', 'transactions() returns array');
+        my $tx0 = $txs->[0];
+        is_deeply($tx0->balance, [], 'balance()');
+        ok($tx0->is_balanced, 'is_balanced()');
 
+        # XXX test tx1 comment, tx2 comment
+        # XXX test post comment
+    };
 
-; comment
-; another comment
-
-2011-09-09    transaction 1
- acc1:subacc1  $11,203.01
- acc2:subacc two  USD 10,000
- ; comment
- acc2:subacc3
-
-
-
-09/09 (2) transaction 2
- acc1:subacc1             20 USD
- acc2:subacc2            USD -20
-09-09 (3) transaction 3
- (acc1)                   $ 20
- acc2:subacc two:subsub    -30
- acc2:subacc3               30
-
-09-09 (3) transaction 4
- [acc1]                 20
- acc2:subacc2          -45
- acc2:subacc3           25
-
-P 2011/09/09 USD 8500 IDR
-_
-
-test_parse ledger=>$ledger1, num_tx => 4;
 done_testing();

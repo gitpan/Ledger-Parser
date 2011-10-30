@@ -2,7 +2,7 @@ NAME
     Ledger::Parser - Parse Ledger journals
 
 VERSION
-    version 0.01
+    version 0.02
 
 SYNOPSIS
      use 5.010;
@@ -29,13 +29,13 @@ SYNOPSIS
      EOF
 
      # get the transactions
-     my @tx = $journal->get_transactions;
+     my $txs = $journal->get_transactions;
 
      # get the postings of a transaction
-     my @postings = $tx[0]->get_postings;
+     my $postings = $txs->[0]->get_postings;
 
      # get all the mentioned accounts
-     my @accts = $journal->get_accounts;
+     my $accts = $journal->get_accounts;
 
 DESCRIPTION
     This module parses Ledger journal into Perl document object. See
@@ -71,7 +71,7 @@ FAQ
     do reporting or parse expressions or many other Ledger features. I use
     this module mainly to insert/delete/edit transactions to journal file,
     e.g. for programatically reconciling journal with internet banking
-    statement.
+    statement, or for shortcuts (see App::LedgerUtils for example).
 
 AUTHOR
     Steven Haryanto <stevenharyanto@gmail.com>

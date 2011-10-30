@@ -10,9 +10,14 @@ lib/Ledger/Comment.pm
 lib/Ledger/Journal.pm
 lib/Ledger/Parser.pm
 lib/Ledger/Posting.pm
+lib/Ledger/Pricing.pm
 lib/Ledger/Transaction.pm
+lib/Ledger/Util.pm
 t/00-compile.t
 t/01-basics.t
+t/error-pcomment.dat
+t/error-postcomment.dat
+t/error-txbal.dat
 t/ledger1.dat
 t/release-pod-coverage.t
 t/release-pod-syntax.t

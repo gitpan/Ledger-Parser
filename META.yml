@@ -15,11 +15,14 @@ meta-spec:
 name: Ledger-Parser
 requires:
   Array::Iterator: 0.07
+  Exporter::Lite: 0
   File::Slurp: 0
   Log::Any: 0
+  Moo: 0
+  Parse::Number::EN: 0
   Test::More: 0.96
   perl: 5.010000
 resources:
   homepage: http://search.cpan.org/dist/Ledger-Parser/
   repository: http://github.com/sharyanto/perl-Ledger-Parser
-version: 0.01
+version: 0.02

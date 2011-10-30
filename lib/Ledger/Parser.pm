@@ -1,6 +1,6 @@
 package Ledger::Parser;
 BEGIN {
-  $Ledger::Parser::VERSION = '0.01';
+  $Ledger::Parser::VERSION = '0.02';
 }
 
 use 5.010;
@@ -13,7 +13,7 @@ use Scalar::Util qw(blessed);
 # VERSION
 
 sub parse {
-    my ($self, $arg) = @_;
+    my ($self, $arg, $filename) = @_;
     die "Please specify a defined argument to parse()\n" unless defined($arg);
 
     my $aryref;
@@ -34,12 +34,12 @@ sub parse {
         die "Invalid argument, please supply a ".
             "string|arrayref|coderef|filehandle\n";
     }
-    Ledger::Journal->new(raw_lines=>$aryref);
+    Ledger::Journal->new(raw_lines=>$aryref, _filename=>$filename);
 }
 
 sub parse_file {
     my ($self, $filename) = @_;
-    $self->parse([read_file($filename)]);
+    $self->parse([read_file($filename)], $filename);
 }
 
 1;
@@ -54,7 +54,7 @@ Ledger::Parser - Parse Ledger journals
 
 =head1 VERSION
 
-version 0.01
+version 0.02
 
 =head1 SYNOPSIS
 
@@ -82,13 +82,13 @@ version 0.01
  EOF
 
  # get the transactions
- my @tx = $journal->get_transactions;
+ my $txs = $journal->get_transactions;
 
  # get the postings of a transaction
- my @postings = $tx[0]->get_postings;
+ my $postings = $txs->[0]->get_postings;
 
  # get all the mentioned accounts
- my @accts = $journal->get_accounts;
+ my $accts = $journal->get_accounts;
 
 =head1 DESCRIPTION
 
@@ -131,7 +131,8 @@ Just like parse(), but will load document from file instead.
 I am not trying to reimplement/port Ledger to Perl. This module doesn't do
 reporting or parse expressions or many other Ledger features. I use this module
 mainly to insert/delete/edit transactions to journal file, e.g. for
-programatically reconciling journal with internet banking statement.
+programatically reconciling journal with internet banking statement, or for
+shortcuts (see L<App::LedgerUtils> for example).
 
 =head1 AUTHOR
 
