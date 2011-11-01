@@ -1,6 +1,6 @@
 package Ledger::Pricing;
 BEGIN {
-  $Ledger::Pricing::VERSION = '0.02';
+  $Ledger::Pricing::VERSION = '0.03';
 }
 
 use 5.010;
@@ -57,7 +57,7 @@ Ledger::Pricing - Represent a Ledger pricing line
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 

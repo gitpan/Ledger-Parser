@@ -17,13 +17,14 @@ my %module_build_args = (
     'Steven Haryanto <stevenharyanto@gmail.com>'
   ],
   'dist_name' => 'Ledger-Parser',
-  'dist_version' => '0.02',
+  'dist_version' => '0.03',
   'license' => 'perl',
   'module_name' => 'Ledger::Parser',
   'recommends' => {},
   'recursive_test_files' => 1,
   'requires' => {
     'Array::Iterator' => '0.07',
+    'DateTime' => '0',
     'Exporter::Lite' => '0',
     'File::Slurp' => '0',
     'Log::Any' => '0',

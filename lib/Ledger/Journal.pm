@@ -1,6 +1,6 @@
 package Ledger::Journal;
 BEGIN {
-  $Ledger::Journal::VERSION = '0.02';
+  $Ledger::Journal::VERSION = '0.03';
 }
 
 use 5.010;
@@ -250,7 +250,7 @@ Ledger::Journal - Represent an Org document
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 

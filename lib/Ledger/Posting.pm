@@ -1,6 +1,6 @@
 package Ledger::Posting;
 BEGIN {
-  $Ledger::Posting::VERSION = '0.02';
+  $Ledger::Posting::VERSION = '0.03';
 }
 
 use 5.010;
@@ -75,7 +75,7 @@ Ledger::Posting - Represent a Ledger posting in a transaction
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 

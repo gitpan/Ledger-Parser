@@ -1,6 +1,6 @@
 package Ledger::Comment;
 BEGIN {
-  $Ledger::Comment::VERSION = '0.02';
+  $Ledger::Comment::VERSION = '0.03';
 }
 
 use 5.010;
@@ -33,7 +33,7 @@ Ledger::Comment - Represent comment or other non-parsable lines
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 

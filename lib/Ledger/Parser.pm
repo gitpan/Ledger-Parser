@@ -1,6 +1,6 @@
 package Ledger::Parser;
 BEGIN {
-  $Ledger::Parser::VERSION = '0.02';
+  $Ledger::Parser::VERSION = '0.03';
 }
 
 use 5.010;
@@ -54,7 +54,7 @@ Ledger::Parser - Parse Ledger journals
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 

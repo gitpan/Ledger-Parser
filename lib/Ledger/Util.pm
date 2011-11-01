@@ -1,6 +1,6 @@
 package Ledger::Util;
 BEGIN {
-  $Ledger::Util::VERSION = '0.02';
+  $Ledger::Util::VERSION = '0.03';
 }
 
 use 5.010;
@@ -87,7 +87,7 @@ Ledger::Util
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 AUTHOR
 
